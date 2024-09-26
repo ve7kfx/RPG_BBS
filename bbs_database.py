@@ -35,7 +35,8 @@ def create_tables():
         content TEXT NOT NULL,
         created_by INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        edited_at TIMESTAMP,
+        edited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Automatically stores the last edit time
+        locked INTEGER DEFAULT 0,  -- Add a lock for posts as well
         FOREIGN KEY (thread_id) REFERENCES threads(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
     )
@@ -57,4 +58,5 @@ def create_tables():
     conn.commit()
     conn.close()
 
+# Call the function to create or update the tables
 create_tables()

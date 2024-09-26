@@ -119,24 +119,16 @@ def check_gm_login_password():
     return False
 
 def main_menu(user):
-    user_id, role = user  # user now contains id and role
-    
-    if role == 'gm':
-        if not check_gm_login_password():
-            print("Access denied.")
-            return
-        # Check or set GM access password
-        check_gm_access_password()
-    else:
-        # Non-GM users need the access password to view restricted sections
-        restricted_sections = ["2", "3", "4"]
+    user_id = user[0]  # Assuming the first item in the user tuple is the user_id
+    role = user[1]     # Assuming the second item is the user's role ('gm' or 'user')
 
     while True:
-        print("\n1. View Threads")
+        print("\nMain Menu")
+        print("1. View Threads")
         print("2. Reply to Thread")
         print("3. Send Private Message")
         print("4. View Inbox")
-        print("5. Create Thread")
+        print("5. Create Thread" if role == 'gm' else "")
         print("6. Edit Post")
         print("7. Character/NPC Management")  # Accessible to all users now
         print("8. Change Access Password" if role == 'gm' else "")
@@ -145,7 +137,7 @@ def main_menu(user):
         choice = input("Enter your choice: ")
 
         if choice == "1":
-            view_threads()
+            view_threads(user_id)  # Pass user_id to view_threads()
         elif choice == "2":
             if role == 'gm' or check_user_access_password():
                 reply_to_thread(user_id)
