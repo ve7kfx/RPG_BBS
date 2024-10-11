@@ -3,9 +3,9 @@
 
 ## Overview
 
-This system is a terminal-based **Bulletin Board System (BBS)** designed specifically for **tabletop RPGs**. It provides users with the ability to interact in text-based forums, manage characters and NPCs, send private messages, roll dice, and even post ANSI/ASCII images. This system is ideal for local hosting and can be used for offline interactions (e.g., over ham radio).
+This system is a terminal-based **Bulletin Board System (BBS)** designed specifically for **tabletop RPGs**. It provides users with the ability to interact in text-based forums, manage characters and NPCs, send private messages, roll dice, and even post ANSI/ASCII images. This system is ideal for local hosting and can be used for offline interactions (e.g., over ham radio). Ham Radio was the main purpose of this making this program, as I was looking for a good way to get more youngsters involved into both hobbies. 
 
-It features **authentication and access control**, where only the GM (Game Master) can manage specific aspects such as NPC creation and thread locking, while all users are free to post in threads and manage their own characters.
+It features **authentication and access control**, which is unencrypted to conform to the rules of amateur radio where only the GM (Game Master) can manage specific aspects such as NPC creation and thread locking, while all users are free to post in threads and manage their own characters. The program can easily be modified to support telent, or ssh connections. 
 
 ### Key Features
 - **Thread Management**: Users can view and create posts in threads that are organized under categories, while only the GM can create new categories and lock threads.
@@ -14,7 +14,7 @@ It features **authentication and access control**, where only the GM (Game Maste
 - **Dice Roller**: Users can roll multi-sided dice (d4 to d100) with or without modifiers.
 - **GM Access Control**: The GM sets a password that restricts certain operations such as posting replies, sending private messages, and accessing the inbox.
 - **Image Posting**: Supports ANSI and ASCII image posting using the `/pic` command.
-- **Custom Install Script**: Automates the setup of the system, including user creation, character/NPC fields, and database table creation.
+- **Custom Install Script**: Automates the setup of the system, including user creation, character/NPC fields, and database table creation. RUN THIS FIRST!!
 
 ---
 
@@ -189,7 +189,7 @@ To include an ANSI or ASCII image in your post, type `/pic` followed by the file
 3. **Thread Interaction**: Users can browse threads, create posts, and reply (based on their access level).
 4. **Private Messages**: Users can send private messages through the private messaging system.
 5. **Character Management**: Users can create and edit their own characters, while the GM can manage NPCs.
-6. **Dice Roller**: Users can roll dice for various in-game mechanics.
+6. **Dice Roller**: Users can roll dice for various in-game mechanics use the format /roll 1d6+1.
 
 ---
 
@@ -208,4 +208,40 @@ You can customize the character/NPC attributes (e.g., special skills, equipment)
 This system is designed to be flexible for different RPG settings. Here are a few ways you can customize it:
 - **Thread Categories**: Modify `bbs_message_board.py` to create additional categories or alter permissions.
 - **Character Attributes**: Use `character_npc_manager.py` to add more detailed stats, inventory, or skills.
-- **User Roles**: You can add new roles (e.g., co-GM, moderator) by modifying the `bbs_auth.py` and `bbs_database.py` files to assign different permissions.
+- **User Roles**
+
+: You can add new roles (e.g., co-GM, moderator) by modifying the `bbs_auth.py` and `bbs_database.py` files to assign different permissions.
+
+---
+
+## Known Issues
+
+- **Image Conversion Failures**: Some images may not convert properly due to character encoding limitations.
+- **Thread Creation Limits**: Only the GM can create new thread categories. This can be customized if necessary.
+
+---
+
+## Future Features
+
+- **Richer Character/NPC Management**: Support for more complex RPG systems like D&D 5e or Pathfinder.
+- **.exe files to be updated as releases as modificaitons are made.
+---
+
+## Contributing
+
+Contributions are welcome! Feel free to submit pull requests or open issues on GitHub. If you wish to contribute:
+- Fork the repository.
+- Create a new branch.
+- Submit your pull request for review.
+
+GitHub Repository: [RPG_BBS](https://github.com/ve7kfx/RPG_BBS)
+
+---
+
+## License
+
+This project is licensed under the **GNU General Public License (GPL)**. You are free to use, modify, and distribute this software under the terms of the GPL. See the `LICENSE` file for more details.
+
+For more information on the GNU General Public License, please visit [GNU.org](https://www.gnu.org/licenses/gpl-3.0.html).
+
+---
