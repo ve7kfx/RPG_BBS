@@ -1,16 +1,102 @@
 import sqlite3
 
+# Pagination constants
+PAGE_SIZE = 5  # Number of characters/NPCs to display per page
+
+# Helper function to get numeric input with validation
+def get_numeric_input(field_name):
+    """Prompt for and validate numeric input."""
+    while True:
+        try:
+            return int(input(f"Enter {field_name}: "))
+        except ValueError:
+            print(f"Invalid input. Please enter a valid number for {field_name}.")
+
+# Helper function to get real (floating-point) input with validation
+def get_real_input(field_name):
+    """Prompt for and validate real number (float) input."""
+    while True:
+        try:
+            return float(input(f"Enter {field_name}: "))
+        except ValueError:
+            print(f"Invalid input. Please enter a valid real number for {field_name}.")
+
+# Helper function to get text input
+def get_text_input(field_name):
+    """Prompt for text input."""
+    return input(f"Enter {field_name}: ")
+
+# Helper function for role selection (1 for NPC, 0 for character)
+def get_role_input():
+    """Prompt for and validate role input (1 for NPC, 0 for character)."""
+    print("You are about to create a new entry in the system.")
+    print("Please choose whether you want this to be an NPC or a Character.")
+    print("Enter '1' for NPC or '0' for Character.")
+    
+    while True:
+        role = input("Enter role (1 for NPC, 0 for character): ").strip()
+        if role in ['0', '1']:
+            return int(role)
+        else:
+            print("Invalid input. Please enter '1' for NPC or '0' for character.")
+
+# Function to get skills with values from the user
+def get_skills_with_values():
+    """Prompt for D&D 3.5 skills and their corresponding values."""
+    dnd_skills = [
+        "Appraise", "Balance", "Bluff", "Climb", "Concentration", "Craft", 
+        "Decipher Script", "Diplomacy", "Disable Device", "Disguise", 
+        "Escape Artist", "Forgery", "Gather Information", "Handle Animal", 
+        "Heal", "Hide", "Intimidate", "Jump", "Knowledge (Arcana)", 
+        "Knowledge (Dungeoneering)", "Knowledge (Geography)", "Knowledge (History)", 
+        "Knowledge (Local)", "Knowledge (Nature)", "Knowledge (Nobility and Royalty)", 
+        "Knowledge (Religion)", "Listen", "Move Silently", "Open Lock", "Perform", 
+        "Profession", "Ride", "Search", "Sense Motive", "Sleight of Hand", 
+        "Speak Language", "Spellcraft", "Spot", "Survival", "Swim", "Tumble", 
+        "Use Magic Device", "Use Rope"
+    ]
+    
+    print("\nEnter the skill values for the following D&D 3.5 skills:")
+    
+    # Create a dictionary to store skill names and their values
+    skill_values = {}
+    
+    # Loop through the skills and prompt the user for a value for each one
+    for skill in dnd_skills:
+        while True:
+            try:
+                value = int(input(f"{skill}: "))  # Prompt for the skill value
+                skill_values[skill] = value  # Store the skill and its value
+                break  # Exit the loop once a valid value is entered
+            except ValueError:
+                print("Please enter a valid number for the skill value.")
+    
+    # Return the skill values as a formatted string, e.g., "Tumble 12, Use Rope 1"
+    return ', '.join(f"{skill} {value}" for skill, value in skill_values.items())
+
+# Helper function to check if the user is a GM
+def is_gm(user_id):
+    """Check if the user is a GM based on their user_id."""
+    conn = sqlite3.connect('bbs.db')  # Assuming GM info is stored in the 'bbs.db' database
+    c = conn.cursor()
+    c.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    role = c.fetchone()
+    conn.close()
+
+    # Assuming 'gm' is the role for a GM user
+    return role is not None and role[0] == 'gm'
+
 # Function to create the character and NPC table
 def create_character_npc_table():
-    """Create a table for characters and NPCs with additional fields for D&D style game, including hit dice and saving throws."""
+    """Create a table for characters and NPCs with additional fields for D&D style game, including skills, hit dice, and saving throws."""
     conn = sqlite3.connect('characters_npcs.db')  # Separate database
     c = conn.cursor()
     
     c.execute('''
-    CREATE TABLE IF NOT EXISTS characters (
+    CREATE TABLE IF NOT EXISTS characters ( 
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('character', 'npc')),
+        role BOOLEAN NOT NULL,  -- 1 for NPC, 0 for character
         race TEXT NOT NULL,
         class TEXT NOT NULL,
         level INTEGER NOT NULL DEFAULT 1,
@@ -23,257 +109,601 @@ def create_character_npc_table():
         reflex INTEGER NOT NULL,
         will INTEGER NOT NULL,
         abilities TEXT,
+        skills TEXT,  -- New column for skills
         non_consumable_inventory TEXT,
         consumable_inventory TEXT,
         spells_known TEXT
     )
     ''')
-    
+
+    # Commit the changes and close the connection
     conn.commit()
     conn.close()
-    print("Character/NPC table with Hit Dice and Saving Throws created in 'characters_npcs.db'.")
+    print("Character/NPC, was created in 'characters_npcs.db'.")
 
-# Function to retrieve column names from the characters table
-def get_table_columns():
-    """Retrieve the list of columns from the characters table dynamically."""
+import sqlite3
+
+# Function to view all characters/NPCs for GM or only characters for regular users
+def view_character_npc_details(user_id):
+    """View all characters/NPCs for GM or only characters for regular users with pagination and search."""
+    
+    # Helper function for pagination
+    def paginate_list(items, page_size):
+        """Generator for paginating a list."""
+        for i in range(0, len(items), page_size):
+            yield items[i:i + page_size]
+	   
+    def display_character_sheet(character, column_names):
+        """Display a formatted character sheet for a selected character/NPC, grouped into sections with extra fields at the bottom."""
+        
+        print("\n--- Character Sheet ---")
+        
+        # Define the columns for each section
+        general_info = ['name', 'race', 'class', 'alignment', 'deity', 'level', 'experience_points']
+        attributes = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma', 'armor_class', 'hit_points', 'initiative', 'speed']
+        saves = ['fortitude_save', 'reflex_save', 'will_save']
+        combat = ['base_attack_bonus', 'grapple']
+        inventory = ['weapons', 'armor', 'gear', 'gold']
+        feats_spells = ['feats', 'spells']
+        special_abilities = ['special_abilities']
+
+        # Track displayed columns
+        displayed_columns = set(general_info + attributes + saves + combat + inventory + feats_spells + special_abilities + ['skills'])
+
+        # Display general info
+        for col_name, value in zip(column_names, character):
+            if col_name in general_info:
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+
+        # Attributes section
+        print("\n--- Attributes ---")
+        for col_name, value in zip(column_names, character):
+            if col_name in attributes:
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+
+        # Saves section
+        print("\n--- Saves ---")
+        for col_name, value in zip(column_names, character):
+            if col_name in saves:
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+
+        # Combat section
+        print("\n--- Combat ---")
+        for col_name, value in zip(column_names, character):
+            if col_name in combat:
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+
+        # Skills section (displayed as an ASCII table)
+        skills_str = character[column_names.index('skills')]
+        if skills_str:
+            print("\n--- Skills ---")
+            print(f"{'Skill':<25} | {'Value':<5}")
+            print("-" * 32)
+            
+            skills_list = [skill.strip() for skill in skills_str.split(',')]
+            for skill in skills_list:
+                skill_name, skill_value = skill.rsplit(' ', 1)  # Split skill name and value
+                print(f"{skill_name:<25} | {skill_value:<5}")
+
+        # Inventory section
+        print("\n--- Inventory ---")
+        for col_name, value in zip(column_names, character):
+            if col_name in inventory:
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+
+        # Feats & Spells section
+        print("\n--- Feats & Spells ---")
+        for col_name, value in zip(column_names, character):
+            if col_name in feats_spells:
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+
+        # Special Abilities section
+        print("\n--- Special Abilities ---")
+        for col_name, value in zip(column_names, character):
+            if col_name in special_abilities:
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+        
+        # Append any additional information that doesn't fit into these categories
+        print("\n--- Other Information ---")
+        for col_name, value in zip(column_names, character):
+            if col_name not in displayed_columns and value is not None and value != '':
+                display_name = col_name.replace('_', ' ').title()
+                print(f"{display_name}: {value}")
+
+        print("\n--- End of Character Sheet ---")
+        print("=" * 40)
+    
+    # Helper function to search characters/NPCs by name
+    def search_characters_by_name(search_term):
+        """Search characters/NPCs by name."""
+        if is_gm(user_id):
+            c.execute("SELECT * FROM characters WHERE name LIKE ?", ('%' + search_term + '%',))
+        else:
+            c.execute("SELECT * FROM characters WHERE role = 0 AND name LIKE ?", ('%' + search_term + '%',))
+        return c.fetchall()
+
+    # Helper function to check if the user is a GM
+    def is_gm(user_id):
+        """Check if the user is a GM based on their user_id."""
+        c.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+        role = c.fetchone()
+        return role is not None and role[0] == 'gm'
+
+    # Constants
+    PAGE_SIZE = 5  # Number of characters/NPCs to display per page
+
+    # Connect to database
     conn = sqlite3.connect('characters_npcs.db')
     c = conn.cursor()
 
+    # Fetch all column names dynamically
     c.execute("PRAGMA table_info(characters)")
-    columns = [col[1] for col in c.fetchall()]
+    columns_info = c.fetchall()
+    column_names = [col[1] for col in columns_info]  # Extract column names
 
-    conn.close()
-    return columns
+    # Fetch characters or NPCs depending on user role
+    if is_gm(user_id):
+        c.execute('SELECT * FROM characters')
+        characters = c.fetchall()
+        print("Displaying all characters and NPCs (GM view):")
+    else:
+        c.execute('SELECT * FROM characters WHERE role = 0')  # Only show characters
+        characters = c.fetchall()
+        print("Displaying all characters:")
 
-# Function to add a new character or NPC dynamically based on database fields
-def add_character_npc():
-    """Add a new character or NPC to the system, dynamically retrieving fields from the database."""
-    conn = sqlite3.connect('characters_npcs.db')  # Separate database
-    c = conn.cursor()
+    # If no characters/NPCs are found
+    if not characters:
+        print("No characters or NPCs found. You may want to add some using the 'Add Character/NPC' option.")
+        conn.close()
+        return
 
-    # Get the column names dynamically from the characters table, excluding 'id'
-    c.execute("PRAGMA table_info(characters)")
-    columns = [col[1] for col in c.fetchall() if col[1] != 'id']
-    
-    values = []  # To store the values entered by the user
-    for field in columns:
-        if field in ["level", "health", "strength", "intelligence", "armor_class", "fortitude", "reflex", "will"]:
-            # Numerical fields require integer input
-            value = int(input(f"Enter {field.replace('_', ' ').capitalize()}: "))
+    # Paginate and display results by name
+    pages = list(paginate_list(characters, PAGE_SIZE))
+    total_pages = len(pages)
+    page_num = 0
+
+    while True:
+        # Display current page
+        print(f"\n--- Page {page_num + 1} of {total_pages} ---")
+        current_page = pages[page_num]
+
+        # Numbered list of characters/NPCs by name on the current page
+        for idx, character in enumerate(current_page, start=1 + page_num * PAGE_SIZE):
+            print(f"{idx}. {character[2]}")  # Display name with index (name is in column 2)
+
+        # Prompt to select a character or navigate pages
+        action = input(f"\nSelect a character by number, or 'n' for next page, 'p' for previous page, 'q' to quit: ").strip().lower()
+
+        # Handle navigation or selection
+        if action.isdigit():
+            char_index = int(action) - 1
+            if 0 <= char_index < len(characters):
+                selected_character = characters[char_index]
+                display_character_sheet(selected_character, column_names)  # Display the character sheet
+            else:
+                print("Invalid selection.")
+        elif action == 'n' and page_num < total_pages - 1:
+            page_num += 1
+        elif action == 'p' and page_num > 0:
+            page_num -= 1
+        elif action == 'q':
+            break
         else:
-            value = input(f"Enter {field.replace('_', ' ').capitalize()}: ")
-        values.append(value)
-    
-    # Construct the SQL query dynamically
-    columns_string = ', '.join(columns)
-    placeholders = ', '.join('?' * len(columns))
-    
-    query = f"INSERT INTO characters ({columns_string}) VALUES ({placeholders})"
-    c.execute(query, values)
-    
-    conn.commit()
+            print("Invalid input. Please try again.")
+
+    # Close the connection
     conn.close()
-    print("Character/NPC added successfully.")
 
-# Function to edit characters or NPCs
-def edit_character_npc():
-
-    conn = sqlite3.connect('bbs.db')
-    c = conn.cursor()
-    char_id = int(input("Enter the ID of the character/NPC to edit: "))
-    user_id = int(input("Enter your user ID: "))
-
-    # Fetch the role of the user
-    c.execute('SELECT role FROM users WHERE id = ?', (user_id,))
-    user_role = c.fetchone()[0]
-
-    # Fetch the role of the character (npc or character)
-    c.execute('SELECT role FROM characters WHERE id = ?', (char_id,))
-    character_role = c.fetchone()[0]
-
-    # Allow modification if the character is NPC and the user is GM
-    if character_role == 'npc' and user_role != 'gm':
-        print("Only the GM can modify NPCs.")
-        return
-    else:
-        # Allow the user to proceed with modifying the NPC
-        new_value = input("Enter the new value for the NPC: ")
-        field = input("Enter the field you want to modify (e.g., health, level, etc.): ")
-        c.execute(f'UPDATE characters SET {field} = ? WHERE id = ?', (new_value, char_id))
-        conn.commit()
-        print(f"{field} of NPC with ID {char_id} updated successfully.")
-        conn = sqlite3.connect('bbs.db')
-    c = conn.cursor()
-    char_id = int(input("Enter the ID of the character/NPC to edit: "))
-    user_id = int(input("Enter your user ID: "))
-
-    # Fetch the role of the user
-    c.execute('SELECT role FROM users WHERE id = ?', (user_id,))
-    user_role = c.fetchone()[0]
-
-    # Fetch the role of the character (npc or character)
-    c.execute('SELECT role FROM characters WHERE id = ?', (char_id,))
-    character_role = c.fetchone()[0]
-
-    # Allow modification if the character is NPC and the user is GM
-    if character_role == 'npc' and user_role != 'gm':
-        print("Only the GM can modify NPCs.")
-        return
-    else:
-        # Allow the user to proceed with modifying the NPC
-        new_value = input("Enter the new value for the NPC: ")
-        field = input("Enter the field you want to modify (e.g., health, level, etc.): ")
-        c.execute(f'UPDATE characters SET {field} = ? WHERE id = ?', (new_value, char_id))
-        conn.commit()
-        print(f"{field} of NPC with ID {char_id} updated successfully.")
-        c = conn.cursor()
-    
-    char_id = int(input("Enter the ID of the character/NPC to edit: "))
-    columns = get_table_columns()
-    print(f"Available fields: {', '.join(columns)}")
-    
-    field = input(f"Which field would you like to edit? (choose from: {', '.join(columns)}): ").lower()
-    new_value = input(f"Enter new value for {field}: ")
-    
-    # Ensure numerical fields are stored as integers
-    if field in ['level', 'health', 'strength', 'intelligence', 'armor_class', 'fortitude', 'reflex', 'will']:
-        new_value = int(new_value)
-    
-    c.execute(f'UPDATE characters SET {field} = ? WHERE id = ?', (new_value, char_id))
-    
-    conn.commit()
-    conn.close()
-    print(f"Character/NPC with ID {char_id} updated successfully.")
-
-# Function to view characters and NPCs dynamically
-def view_characters_npcs():
-    """View all characters and NPCs dynamically based on the fields in the database."""
-    conn = sqlite3.connect('characters_npcs.db')  # Separate database
+#Function to add Characters and NPCs
+def add_character():
+    conn = sqlite3.connect('characters_npcs.db')
     c = conn.cursor()
 
-    # Dynamically retrieve the column names
+    # Retrieve the column names and types from the 'characters' table, starting from column 2
     c.execute("PRAGMA table_info(characters)")
-    columns = [col[1] for col in c.fetchall()]
+    columns_info = c.fetchall()[2:]  # Skip the 'id' column
 
-    # Fetch all character/NPC data
-    c.execute('SELECT * FROM characters')
+    # Initialize a dictionary to hold column names and user input values
+    user_input = {}
+
+    # Loop through each column starting from the second and prompt the user for input
+    for column in columns_info:
+        column_name = column[1]  # Column name is at index 1
+        column_type = column[2]  # Column type is at index 2
+
+        if column_name == 'skills':  # Special case for skills input
+            user_input[column_name] = get_skills_with_values()
+        else:
+            user_input[column_name] = get_input_for_column(column_name, column_type)
+
+    # Prepare SQL placeholders for the insert query
+    columns_string = ', '.join(user_input.keys())
+    placeholders = ', '.join(['?' for _ in user_input])
+
+    # Insert the new character/NPC data into the database
+    query = f"INSERT INTO characters ({columns_string}) VALUES ({placeholders})"
+    c.execute(query, list(user_input.values()))
+
+    conn.commit()
+    conn.close()
+
+    print(f"Character/NPC '{user_input.get('name', 'Unknown')}' added successfully.")
+
+# Function to retrieve input for each field based on its type
+def get_input_for_column(column_name, column_type):
+    """Prompt user for input based on column type."""
+    if column_type == 'INTEGER':
+        return get_numeric_input(column_name.replace('_', ' ').capitalize())
+    elif column_type == 'REAL':
+        return get_real_input(column_name.replace('_', ' ').capitalize())
+    elif column_type == 'TEXT':
+        return get_text_input(column_name.replace('_', ' ').capitalize())
+    elif column_type == 'BOOLEAN':
+        return get_role_input()
+    else:
+        return get_text_input(column_name.replace('_', ' ').capitalize())
+
+# Function to edit characters or NPCs dynamically based on table fields
+
+# Function to edit an existing character or NPC with pagination and search
+def edit_character_npc(user_id):
+    """Edit an existing character or NPC with quick field search and option to modify all fields."""
+    
+    # Helper function for pagination
+    def paginate_list(items, page_size):
+        """Generator for paginating a list."""
+        for i in range(0, len(items), page_size):
+            yield items[i:i + page_size]
+
+    # Helper function to search characters/NPCs by name
+    def search_characters_by_name(search_term):
+        """Search characters/NPCs by name."""
+        if is_gm(user_id):
+            c.execute("SELECT * FROM characters WHERE name LIKE ?", ('%' + search_term + '%',))
+        else:
+            c.execute("SELECT * FROM characters WHERE role = 0 AND name LIKE ?", ('%' + search_term + '%',))
+        return c.fetchall()
+
+    # Helper function to get input for a specific field
+    def get_input_for_column(column_name, current_value):
+        """Prompt user for input based on column type, allowing them to keep the current value."""
+        new_value = input(f"Enter new value for {column_name.replace('_', ' ').title()} (leave blank to keep '{current_value}'): ").strip()
+        return new_value if new_value else current_value
+
+    # Helper function to check if the user is a GM
+    def is_gm(user_id):
+        """Check if the user is a GM based on their user_id."""
+        conn = sqlite3.connect('bbs.db')  # Use the correct database here
+        c = conn.cursor()
+        c.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+        role = c.fetchone()
+        conn.close()
+        
+        return role is not None and role[0] == 'gm'
+
+    # Constants
+    PAGE_SIZE = 5  # Number of characters/NPCs to display per page
+
+    # Connect to the database
+    conn = sqlite3.connect('characters_npcs.db')
+    c = conn.cursor()
+
+    # Fetch all column names dynamically
+    c.execute("PRAGMA table_info(characters)")
+    columns_info = c.fetchall()
+    column_names = [col[1] for col in columns_info]  # Extract column names
+
+    # Fetch characters or NPCs depending on user role
+    if is_gm(user_id):
+        c.execute('SELECT * FROM characters')
+        characters = c.fetchall()
+        print("Displaying all characters and NPCs (GM view):")
+    else:
+        c.execute('SELECT * FROM characters WHERE role = 0')  # Only show characters
+        characters = c.fetchall()
+        print("Displaying all characters:")
+
+    # If no characters/NPCs are found
+    if not characters:
+        print("No characters or NPCs found.")
+        conn.close()
+        return
+
+    # Search option
+    search_term = input("Enter a name to search or press Enter to skip: ").strip()
+    if search_term:
+        characters = search_characters_by_name(search_term)
+        if not characters:
+            print(f"No characters found with the name '{search_term}'.")
+            conn.close()
+            return
+
+    # Paginate and display results
+    pages = list(paginate_list(characters, PAGE_SIZE))
+    total_pages = len(pages)
+    page_num = 0
+
+    while True:
+        # Display current page
+        print(f"\n--- Page {page_num + 1} of {total_pages} ---")
+        current_page = pages[page_num]
+
+        # Numbered list of characters/NPCs on the current page
+        for idx, character in enumerate(current_page, start=1 + page_num * PAGE_SIZE):
+            print(f"{idx}. {character[1]}")  # Display name with index
+
+        # Prompt to select a character or navigate pages
+        action = input(f"\nSelect a character by number, 'n' for next page, 'p' for previous page, 'q' to quit: ").strip().lower()
+
+        # Handle navigation or selection
+        if action.isdigit():
+            char_index = int(action) - 1
+            if 0 <= char_index < len(characters):
+                selected_character = characters[char_index]
+                
+                # Fetch the selected character
+                c.execute("SELECT * FROM characters WHERE id = ?", (selected_character[0],))  # Assuming ID is in the first column
+                character = c.fetchone()
+
+                if not character:
+                    print("Character/NPC not found.")
+                    conn.close()
+                    return
+
+                # Initialize a dictionary to hold column names and updated values
+                updated_values = {col: character[i] for i, col in enumerate(column_names) if col != 'id'}
+
+                # Main loop for editing fields
+                while True:
+                    # Display current values
+                    print("\n--- Current Character Information ---")
+                    for col_name, value in updated_values.items():
+                        display_name = col_name.replace('_', ' ').title()
+                        print(f"{display_name}: {value}")
+
+                    # Ask the user if they want to search for a specific field or run through all fields
+                    edit_mode = input("\nDo you want to (1) search a specific field or (2) run through all fields? (1/2): ").strip()
+
+                    if edit_mode == '1':  # Search and modify a specific field
+                        field_to_modify = input("Enter the field name to modify: ").strip().lower()
+                        
+                        if field_to_modify in updated_values:
+                            updated_values[field_to_modify] = get_input_for_column(field_to_modify, updated_values[field_to_modify])
+
+                            # Ask if the user wants to continue editing or save and exit
+                            continue_editing = input("\nDo you want to modify another field? (y/n): ").strip().lower()
+                            if continue_editing == 'n':
+                                break
+                        else:
+                            print(f"Field '{field_to_modify}' does not exist. Please enter a valid field.")
+                    elif edit_mode == '2':  # Run through all fields
+                        for col_name in updated_values.keys():
+                            updated_values[col_name] = get_input_for_column(col_name, updated_values[col_name])
+                        
+                        # Ask if the user wants to continue editing or save and exit
+                        continue_editing = input("\nDo you want to modify another field? (y/n): ").strip().lower()
+                        if continue_editing == 'n':
+                            break
+                    else:
+                        print("Invalid option. Please enter '1' or '2'.")
+                        continue
+
+                # Prepare the query to update the character
+                set_clause = ', '.join(f"{col} = ?" for col in updated_values.keys())
+                query = f"UPDATE characters SET {set_clause} WHERE id = ?"
+
+                # Execute the update query with the updated values
+                c.execute(query, list(updated_values.values()) + [character[0]])
+
+                conn.commit()
+                print(f"Character/NPC '{updated_values.get('name', 'Unknown')}' updated successfully.")
+                break  # Exit the loop after successful update
+            else:
+                print("Invalid selection.")
+        elif action == 'n' and page_num < total_pages - 1:
+            page_num += 1
+        elif action == 'p' and page_num > 0:
+            page_num -= 1
+        elif action == 'q':
+            break
+        else:
+            print("Invalid input. Please try again.")
+
+    conn.close()
+
+import sqlite3
+
+import sqlite3
+
+def delete_character_npc(user_id):
+    """Delete a character or NPC from the system, with restrictions based on user role."""
+
+    # Check if the user is a GM
+    def is_gm(user_id):
+        conn = sqlite3.connect('bbs.db')
+        c = conn.cursor()
+        c.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+        role = c.fetchone()
+        conn.close()
+        return role is not None and role[0] == 'gm'
+
+    # Connect to the characters database
+    conn = sqlite3.connect('characters_npcs.db')
+    c = conn.cursor()
+
+    # Fetch characters based on user role
+    if is_gm(user_id):
+        c.execute('SELECT id, name, role FROM characters')
+    else:
+        c.execute('SELECT id, name, role FROM characters WHERE role = 0')  # Non-GMs can only delete characters, not NPCs
     characters = c.fetchall()
 
-    if characters:
-        for character in characters:
-            print("\n--- Character/NPC Details ---")
-            # Dynamically print each column and its corresponding value
-            for index, column in enumerate(columns):
-                value = character[index]
-                print(f"{column.replace('_', ' ').capitalize()}: {value}")
-    else:
-        print("No characters or NPCs found.")
+    if not characters:
+        print("No characters or NPCs found to delete.")
+        conn.close()
+        return
 
-    conn.close()
+    # Display the list of characters/NPCs
+    print("\n--- Character/NPC List ---")
+    for idx, character in enumerate(characters, start=1):
+        char_id, char_name, char_role = character
+        role_name = "NPC" if char_role == 1 else "Character"
+        print(f"{idx}. {char_name} ({role_name})")
 
-# Function to delete characters or NPCs
-def delete_character_npc():
-    """Delete a character or NPC from the system."""
-    conn = sqlite3.connect('characters_npcs.db')  # Separate database
-    c = conn.cursor()
-    
-    char_id = int(input("Enter the ID of the character/NPC to delete: "))
-    
-    c.execute('DELETE FROM characters WHERE id = ?', (char_id,))
-    
-    conn.commit()
-    conn.close()
-    print(f"Character/NPC with ID {char_id} deleted successfully.")
-
-# Function to add new fields dynamically
-def add_field_to_table():
-    """Add a new field to the characters table dynamically."""
-    conn = sqlite3.connect('characters_npcs.db')
-    c = conn.cursor()
-
-    field_name = input("Enter the name of the new field: ")
-    field_type = input("Enter the type of the field (INTEGER, TEXT, REAL, BOOLEAN): ").upper()
-    nullable = input("Can this field be NULL? (yes/no): ").lower()
-    default_value = input("Enter the default value for this field (optional, press Enter to skip): ")
-
-    query = f"ALTER TABLE characters ADD COLUMN {field_name} {field_type}"
-    
-    if nullable == 'no':
-        query += " NOT NULL"
-    if default_value:
-        query += f" DEFAULT {default_value}"
-
-    try:
-        c.execute(query)
-        conn.commit()
-        print(f"Field '{field_name}' of type '{field_type}' added to the characters table.")
-    except sqlite3.OperationalError as e:
-        print(f"Error: {e}")
-    
-    conn.close()
-
-# Function to remove fields dynamically
-def remove_field_from_table():
-    """Remove a field from the characters table."""
-    conn = sqlite3.connect('characters_npcs.db')
-    c = conn.cursor()
-
-    field_name = input("Enter the name of the field to remove: ")
-
-    c.execute("PRAGMA table_info(characters)")
-    columns = [col[1] for col in c.fetchall() if col[1] != field_name]
-
-    c.execute(f"CREATE TABLE IF NOT EXISTS new_characters ({', '.join(columns)})")
-    c.execute(f"INSERT INTO new_characters ({', '.join(columns)}) SELECT {', '.join(columns)} FROM characters")
-    c.execute("DROP TABLE characters")
-    c.execute("ALTER TABLE new_characters RENAME TO characters")
-    
-    conn.commit()
-    conn.close()
-    print(f"Field '{field_name}' removed successfully.")
-
-# Function to manage customization of fields
-def customize_fields_menu():
+    # Deletion by selecting number from the list
     while True:
-        print("\n--- Customize Character/NPC Fields ---")
-        print("1. Add a new field")
-        print("2. Remove a field")
-        print("3. Back to Main Menu")
-        
-        choice = input("Enter your choice: ")
-        
-        if choice == "1":
-            add_field_to_table()
-        elif choice == "2":
-            remove_field_from_table()
-        elif choice == "3":
+        try:
+            selection = input("\nSelect a character by number to delete, or 'q' to quit: ").strip().lower()
+            if selection == 'q':
+                print("Deletion canceled.")
+                conn.close()
+                return
+            selection = int(selection)
+            if 1 <= selection <= len(characters):
+                selected_character = characters[selection - 1]  # Get the selected character
+                char_id, char_name, char_role = selected_character
+                break
+            else:
+                print(f"Please select a valid number between 1 and {len(characters)}.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
+
+    # Fetch creator information for the selected character
+    c.execute("SELECT role, user_id FROM characters WHERE id = ?", (char_id,))
+    char_role, creator_id = c.fetchone()
+
+    # Ensure that only GMs can delete NPCs and users can delete their own characters
+    if char_role == 1 and not is_gm(user_id):
+        print("Only GMs can delete NPCs.")
+    elif char_role == 0 and user_id != creator_id:
+        print("You can only delete your own characters.")
+    else:
+        # Confirm and delete
+        confirm = input(f"Are you sure you want to delete '{char_name}'? (y/n): ").strip().lower()
+        if confirm == 'y':
+            c.execute("DELETE FROM characters WHERE id = ?", (char_id,))
+            conn.commit()
+            print(f"Character/NPC '{char_name}' deleted successfully.")
+        else:
+            print("Deletion canceled.")
+
+    conn.close()
+# Function to add or remove fields dynamically
+def modify_fields(user_id):
+    """Add or remove fields in the character table."""
+    conn = sqlite3.connect('characters_npcs.db')
+    c = conn.cursor()
+
+    # Check if the user is GM
+    gm_status = is_gm(user_id)
+
+    # Fetch current columns from 'characters' table
+    def get_existing_columns():
+        c.execute("PRAGMA table_info(characters)")
+        return [col[1] for col in c.fetchall()]
+
+    while True:
+        print("\n--- Modify Fields ---")
+        print("1. Add Field (GM only)")
+        print("2. Remove Field (GM only)")
+        print("3. Done")
+
+        choice = input("Enter your choice (1/2/3): ").strip()
+
+        if choice == '1':
+            if not gm_status:
+                print("Only the GM can add fields.")
+                continue
+
+            # Add a new field
+            field_name = input("Enter the name of the new field: ").strip()
+            field_type = input("Enter the type of the field (TEXT, INTEGER, BOOLEAN, REAL): ").upper().strip()
+
+            if not field_name or ' ' in field_name:
+                print("Invalid field name. Field name cannot be empty or contain spaces.")
+                continue
+
+            existing_columns = get_existing_columns()
+
+            if field_name in existing_columns:
+                print(f"Field '{field_name}' already exists.")
+                continue
+
+            if field_type not in ('TEXT', 'INTEGER', 'BOOLEAN', 'REAL'):
+                print(f"Invalid field type: {field_type}. Must be TEXT, INTEGER, BOOLEAN, or REAL.")
+                continue
+
+            try:
+                c.execute(f"ALTER TABLE characters ADD COLUMN {field_name} {field_type}")
+                conn.commit()
+                print(f"Field '{field_name}' added successfully.")
+            except sqlite3.OperationalError as e:
+                print(f"Error adding field: {e}")
+        elif choice == '2':
+            if not gm_status:
+                print("Only the GM can remove fields.")
+                continue
+
+            # Remove an existing field
+            field_name = input("Enter the name of the field to remove: ").strip()
+
+            existing_columns = get_existing_columns()
+
+            if field_name not in existing_columns:
+                print(f"Field '{field_name}' does not exist.")
+                continue
+
+            # Get user confirmation before proceeding
+            confirm = input(f"Are you sure you want to remove the field '{field_name}'? This cannot be undone. (y/n): ").lower().strip()
+            if confirm != 'y':
+                continue
+
+            try:
+                columns_to_keep = [col for col in existing_columns if col != field_name]
+                c.execute(f"CREATE TABLE characters_new AS SELECT {', '.join(columns_to_keep)} FROM characters")
+                c.execute("DROP TABLE characters")
+                c.execute("ALTER TABLE characters_new RENAME TO characters")
+                conn.commit()
+                print(f"Field '{field_name}' removed successfully.")
+            except sqlite3.OperationalError as e:
+                print(f"Error removing field: {e}")
+        elif choice == '3':
             break
         else:
             print("Invalid choice. Please try again.")
 
+    conn.close()
+
 # Character/NPC main menu
-def character_npc_menu():
+def character_npc_menu(user_id):
     while True:
         print("\n--- Character/NPC Management ---")
         print("1. Add Character/NPC")
-        print("2. View Characters/NPCs")
+        print("2. View Character/NPC Details")
         print("3. Edit Character/NPC")
         print("4. Delete Character/NPC")
-        print("5. Customize Fields")
+        print("5. Modify Fields")
         print("6. Back to Main Menu")
         
         choice = input("Enter your choice: ")
         
         if choice == "1":
-            add_character_npc()
+            add_character()
         elif choice == "2":
-            view_characters_npcs()
+            view_character_npc_details(user_id)  # Modified to view characters/NPCs based on user role
         elif choice == "3":
-            edit_character_npc()
+            edit_character_npc(user_id)
         elif choice == "4":
-            delete_character_npc()
+            delete_character_npc(user_id)
         elif choice == "5":
-            customize_fields_menu()
+            modify_fields(user_id)  # Pass user_id to modify_fields
         elif choice == "6":
             break
         else:

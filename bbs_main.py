@@ -1,4 +1,4 @@
-from bbs_auth import register, login
+from bbs_auth import register, login 
 from bbs_message_board import create_thread, view_threads, reply_to_thread, edit_post
 from bbs_private_messages import send_private_message, view_inbox
 from character_npc_manager import character_npc_menu
@@ -6,7 +6,7 @@ import sqlite3
 import re
 
 # Function to validate the GM access password
-def validate_access_password(password):
+def validate_access_password(password):   
     """Validate that the password is alphanumeric with at least one special character."""
     if len(password) >= 8 and re.search(r'\W', password) and re.search(r'[a-zA-Z0-9]', password):
         return True
@@ -26,7 +26,7 @@ def create_gm_access_password():
             password TEXT
         )
     ''')
-    
+
     # Check if the access password has been set before
     c.execute('SELECT password FROM system_settings WHERE setting = "access_password"')
     password = c.fetchone()
@@ -128,10 +128,10 @@ def main_menu(user):
         print("2. Reply to Thread")
         print("3. Send Private Message")
         print("4. View Inbox")
-        print("5. Create Thread" if role == 'gm' else "")
+        print("5. Create Thread" if role == 'gm' else "SORRY GM ONLY")
         print("6. Edit Post")
         print("7. Character/NPC Management")  # Accessible to all users now
-        print("8. Change Access Password" if role == 'gm' else "")
+        print("8. Change Access Password" if role == 'gm' else "SORRY GM ONLY")
         print("9. Logout")
         
         choice = input("Enter your choice: ")
@@ -158,7 +158,10 @@ def main_menu(user):
         elif choice == "6" and role == 'gm':
             edit_post(user_id)
         elif choice == "7":
-            character_npc_menu()  # Now accessible to all users
+            if role == 'gm' or check_user_access_password():
+                character_npc_menu(user_id)  # Now passes user_id
+            else:
+                print("Access denied.")
         elif choice == "8" and role == 'gm':
             check_gm_access_password()  # Allow GM to change the access password
         elif choice == "9":
@@ -168,7 +171,7 @@ def main_menu(user):
             print("Invalid choice.")
 
 if __name__ == "__main__":
-    print("Welcome to the Terminal BBS")
+    print("Welcome to the RPG TERMINAL BBS")
     
     # Check or set GM access password on first run of the program
     create_gm_access_password()
